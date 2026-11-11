@@ -71,6 +71,8 @@ export const quickAdd = (title: string, dueAt: number | null) => call<Item>("qui
 // Windows / modes (implemented in Rust so the tray and hotkey stay in sync)
 export const toggleMode = () => call<Mode>("toggle_mode");
 export const setPinned = (pinned: boolean) => call<void>("set_pinned", { pinned });
+/** A warning message if Ctrl+Shift+L couldn't be registered (another program owns it), else null. */
+export const hotkeyStatus = () => call<string | null>("hotkey_status");
 export const setWidgetCollapsed = (collapsed: boolean) => call<void>("set_widget_collapsed", { collapsed });
 
 // Background image: copies the picked file into {app_data_dir}/backgrounds and returns the new path.

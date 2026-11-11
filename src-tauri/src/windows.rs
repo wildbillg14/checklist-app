@@ -63,6 +63,17 @@ fn window(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
         .ok_or_else(|| format!("The {label} window is missing"))
 }
 
+/// Set always-on-top for real. tao caches the flag and skips the Win32 call when it
+/// thinks nothing changed, but Windows can drop topmost (e.g. while the window is
+/// hidden at startup), so toggle it off first to force a fresh SetWindowPos.
+fn force_topmost(w: &WebviewWindow, pinned: bool) -> tauri::Result<()> {
+    w.set_always_on_top(false)?;
+    if pinned {
+        w.set_always_on_top(true)?;
+    }
+    Ok(())
+}
+
 // ----- mode switching ---------------------------------------------------------
 
 /// Show the window for `mode` and hide the other one. Never both visible.
@@ -80,6 +91,10 @@ pub fn show_mode(app: &AppHandle, mode: Mode) {
     if let Ok(w) = window(app, show) {
         let _ = w.unminimize();
         let _ = w.show();
+        if mode == Mode::Widget {
+            // Re-apply after showing: Windows can drop topmost set on a hidden window.
+            let _ = force_topmost(&w, setting_bool(app, "widgetPinned"));
+        }
         let _ = w.set_focus();
     }
     if stored_mode(app) != mode {
@@ -114,9 +129,7 @@ pub fn open_quick_add(app: &AppHandle) {
 // ----- widget pin / collapse ----------------------------------------------------
 
 pub fn apply_pinned(app: &AppHandle, pinned: bool) -> Result<(), String> {
-    window(app, WIDGET)?
-        .set_always_on_top(pinned)
-        .map_err(|e| format!("Couldn't change pin: {e}"))?;
+    force_topmost(&window(app, WIDGET)?, pinned).map_err(|e| format!("Couldn't change pin: {e}"))?;
     save_setting(app, "widgetPinned", serde_json::json!(pinned))?;
     crate::tray::sync(app);
     Ok(())
@@ -145,16 +158,41 @@ pub fn apply_collapsed(app: &AppHandle, collapsed: bool) -> Result<(), String> {
     save_setting(app, "widgetCollapsed", serde_json::json!(collapsed))
 }
 
-/// Apply persisted widget state (pin, collapse limits) at startup.
+/// Apply persisted widget state at startup: pin, and a height that matches the
+/// collapsed setting (the saved window size can disagree if the app was killed).
 pub fn restore_widget(app: &AppHandle) {
-    if let Ok(w) = window(app, WIDGET) {
-        let _ = w.set_always_on_top(setting_bool(app, "widgetPinned"));
-        let min_h = if setting_bool(app, "widgetCollapsed") { COLLAPSED_HEIGHT } else { WIDGET_MIN_HEIGHT };
-        let _ = w.set_min_size(Some(LogicalSize::new(WIDGET_MIN_WIDTH, min_h)));
+    let Ok(w) = window(app, WIDGET) else { return };
+    let _ = force_topmost(&w, setting_bool(app, "widgetPinned"));
+    let collapsed = setting_bool(app, "widgetCollapsed");
+    let min_h = if collapsed { COLLAPSED_HEIGHT } else { WIDGET_MIN_HEIGHT };
+    let _ = w.set_min_size(Some(LogicalSize::new(WIDGET_MIN_WIDTH, min_h)));
+    if let (Ok(scale), Ok(size)) = (w.scale_factor(), w.inner_size()) {
+        let size = size.to_logical::<f64>(scale);
+        let want = if collapsed {
+            COLLAPSED_HEIGHT
+        } else if size.height < WIDGET_MIN_HEIGHT {
+            setting(app, "widgetExpandedHeight")
+                .and_then(|v| v.as_f64())
+                .filter(|h| *h >= WIDGET_MIN_HEIGHT)
+                .unwrap_or(WIDGET_DEFAULT_HEIGHT)
+        } else {
+            size.height
+        };
+        if (want - size.height).abs() > 1.0 {
+            let _ = w.set_size(LogicalSize::new(size.width, want));
+        }
     }
 }
 
 // ----- commands ------------------------------------------------------------------
+
+/// `Some(message)` if the global toggle shortcut couldn't be registered.
+pub struct HotkeyStatus(pub Option<String>);
+
+#[tauri::command]
+pub fn hotkey_status(status: tauri::State<HotkeyStatus>) -> Option<String> {
+    status.0.clone()
+}
 
 #[tauri::command]
 pub fn toggle_mode(app: AppHandle) -> Result<Mode, String> {

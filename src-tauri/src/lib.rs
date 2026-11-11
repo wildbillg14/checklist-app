@@ -5,7 +5,7 @@ mod tray;
 mod windows;
 
 use std::sync::Mutex;
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_window_state::StateFlags;
@@ -51,17 +51,17 @@ pub fn run() {
             let handle = app.handle().clone();
             let mode = windows::stored_mode(&handle);
             app.manage(windows::AppMode(Mutex::new(mode)));
-            windows::restore_widget(&handle);
             tray::create(&handle)?;
 
-            if let Err(e) = app.global_shortcut().register(toggle_shortcut) {
-                eprintln!("Couldn't register Ctrl+Shift+L (in use by another app?): {e}");
-            }
-
-            let minimized = std::env::args().any(|a| a == MINIMIZED_FLAG);
-            if !minimized {
-                windows::show_mode(&handle, mode);
-            }
+            // Another program can already own the combination; record that so
+            // Settings can tell the user instead of failing silently.
+            let hotkey_error = app.global_shortcut().register(toggle_shortcut).err().map(|e| {
+                eprintln!("Couldn't register Ctrl+Shift+L: {e}");
+                "Ctrl+Shift+L is already used by another program, so the mini-view hotkey is off. \
+                 Use the ⤡ button or the tray icon instead."
+                    .to_string()
+            });
+            app.manage(windows::HotkeyStatus(hotkey_error));
 
             reminders::start(handle);
             Ok(())
@@ -101,7 +101,18 @@ pub fn run() {
             windows::toggle_mode,
             windows::set_pinned,
             windows::set_widget_collapsed,
+            windows::hotkey_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Window work waits for the event loop, after window-state has restored
+            // positions; otherwise topmost/size changes made in setup can be lost.
+            if let RunEvent::Ready = event {
+                windows::restore_widget(app);
+                if !std::env::args().any(|a| a == MINIMIZED_FLAG) {
+                    windows::show_mode(app, windows::current_mode(app));
+                }
+            }
+        });
 }

@@ -146,6 +146,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
         <Section title="System">
           <AutostartToggle />
+          <HotkeyWarning />
         </Section>
 
         <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
@@ -191,6 +192,25 @@ function AutostartToggle() {
         className="h-5 w-5 accent-sky-500"
       />
     </label>
+  );
+}
+
+function HotkeyWarning() {
+  const [warning, setWarning] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .hotkeyStatus()
+      .then(setWarning)
+      .catch(() => undefined);
+  }, []);
+  if (!warning) return null;
+  return (
+    <p
+      data-hotkey-warning
+      className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+    >
+      ⚠ {warning}
+    </p>
   );
 }
 
