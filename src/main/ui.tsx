@@ -49,7 +49,7 @@ export function ToolbarButton({
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-black/5 disabled:opacity-40 disabled:hover:bg-transparent dark:text-zinc-300 dark:hover:bg-white/10 ${
+      className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-black/5 disabled:opacity-40 disabled:hover:bg-transparent dark:text-zinc-300 dark:hover:bg-white/10 ${
         active ? "bg-black/10 dark:bg-white/15" : ""
       }`}
     >

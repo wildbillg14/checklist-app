@@ -1,3 +1,44 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* The main window paints its own background layer; the widget is transparent. */
+html:not(.widget) body {
+  background: #f4f4f5;
+}
+html.dark:not(.widget) body {
+  background: #09090b;
+}
+html.widget,
+html.widget body {
+  background: transparent;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+}
+
+/* Translucent side panels over the background. */
+@utility panel {
+  background-color: rgb(255 255 255 / 0.62);
+  backdrop-filter: blur(14px);
+  .dark & {
+    background-color: rgb(24 24 27 / 0.62);
+  }
+}

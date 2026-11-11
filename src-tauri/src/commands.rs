@@ -177,6 +177,53 @@ pub fn get_today(db: State<Db>) -> Result<TodayView, String> {
     db::get_today(&*db.conn()?, now, start, end)
 }
 
+// ----- Background image ----------------------------------------------------
+
+const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "gif", "bmp"];
+const MAX_IMAGE_BYTES: u64 = 30 * 1024 * 1024;
+
+/// Copy a user-picked image into `{app_data_dir}/backgrounds/` (the only folder the
+/// asset protocol may read) and return the copy's absolute path. Older copies are removed.
+#[tauri::command]
+pub fn import_background(app: AppHandle, source: String) -> Result<String, String> {
+    use std::path::Path;
+    use tauri::Manager;
+
+    let src = Path::new(&source);
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| IMAGE_EXTS.contains(&e.as_str()))
+        .ok_or_else(|| format!("Unsupported image type. Use one of: {}", IMAGE_EXTS.join(", ")))?;
+    let meta = std::fs::metadata(src).map_err(|e| format!("Can't read {}: {e}", src.display()))?;
+    if !meta.is_file() {
+        return Err(format!("{} is not a file", src.display()));
+    }
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err("That image is larger than 30 MB".into());
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("No app data folder: {e}"))?
+        .join("backgrounds");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Can't create {}: {e}", dir.display()))?;
+    let dest = dir.join(format!("background-{}.{ext}", db::now_ms()));
+    std::fs::copy(src, &dest).map_err(|e| format!("Couldn't copy the image: {e}"))?;
+
+    // Keep the folder tidy: only the newest background is needed.
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if entry.path() != dest {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    Ok(dest.to_string_lossy().into_owned())
+}
+
 // ----- Settings ------------------------------------------------------------
 
 #[tauri::command]

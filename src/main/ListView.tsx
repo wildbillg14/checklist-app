@@ -12,6 +12,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import * as api from "../shared/api";
 import { useCurrentList, useStore } from "../shared/store";
 import type { Item } from "../shared/types";
+import ColorPicker from "./ColorPicker";
 import InlineEdit from "./InlineEdit";
 import ItemRow from "./ItemRow";
 import { newListFromTemplate, saveAsTemplate } from "./templates";
@@ -73,8 +74,9 @@ export default function ListView() {
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
-      <header className="flex items-center gap-3 px-6 pb-3 pt-5">
-        <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: list.accentColor ?? "#a1a1aa" }} />
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-3 pt-5">
+        <div className="flex min-w-0 max-w-full items-center gap-3">
+        <AccentButton listId={list.id} color={list.accentColor} />
         {renaming ? (
           <InlineEdit
             value={list.name}
@@ -99,8 +101,9 @@ export default function ListView() {
             Template
           </span>
         )}
-        <span className="text-sm text-zinc-500 dark:text-zinc-400">{openCount} open</span>
-        <div className="ml-auto flex items-center gap-1">
+        <span className="shrink-0 whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">{openCount} open</span>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {list.isTemplate ? (
             <ToolbarButton onClick={() => void newListFromTemplate(list)}>New list from template</ToolbarButton>
           ) : (
@@ -137,6 +140,38 @@ export default function ListView() {
         )}
       </div>
     </section>
+  );
+}
+
+/** The list's accent dot; click to pick an accent color (shown in the sidebar). */
+function AccentButton({ listId, color }: { listId: number; color: string | null }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="List accent color"
+        aria-label="List accent color"
+        className="block h-3.5 w-3.5 rounded-full ring-offset-2 hover:ring-2 hover:ring-black/20 dark:ring-offset-zinc-900 dark:hover:ring-white/30"
+        style={{ background: color ?? "#a1a1aa" }}
+      />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-6 z-30 w-64 rounded-lg bg-white p-3 shadow-xl ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10">
+            <ColorPicker
+              value={color}
+              noneLabel="Default"
+              onChange={(c) => {
+                void api.setListAccent(listId, c);
+                setOpen(false);
+              }}
+            />
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

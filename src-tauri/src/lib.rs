@@ -35,6 +35,7 @@ pub fn run() {
             commands::create_list_from_template,
             commands::search,
             commands::get_today,
+            commands::import_background,
             commands::get_settings,
             commands::set_setting,
         ])

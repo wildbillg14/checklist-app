@@ -64,6 +64,9 @@ export const createListFromTemplate = (templateId: number, name: string) =>
 export const search = (query: string) => call<ItemWithContext[]>("search", { query });
 export const getToday = () => call<TodayView>("get_today");
 
+// Background image: copies the picked file into {app_data_dir}/backgrounds and returns the new path.
+export const importBackground = (source: string) => call<string>("import_background", { source });
+
 // Settings
 export const getSettings = () => call<Partial<Settings>>("get_settings");
 export const setSetting = <K extends SettingKey>(key: K, value: Settings[K]) =>

@@ -17,7 +17,7 @@ import InlineEdit from "./InlineEdit";
 import { newListFromTemplate } from "./templates";
 import { IconButton } from "./ui";
 
-export default function Sidebar() {
+export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const lists = useStore((s) => s.lists);
   const creatingList = useStore((s) => s.creatingList);
   const setCreatingList = useStore((s) => s.setCreatingList);
@@ -68,6 +68,17 @@ export default function Sidebar() {
           Reusable checklists. Use “Save as template” on any list.
         </p>
       )}
+
+      <div className="mt-auto pt-4">
+        <button
+          type="button"
+          data-open-settings
+          onClick={onOpenSettings}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-600 hover:bg-black/5 dark:text-zinc-300 dark:hover:bg-white/10"
+        >
+          <span aria-hidden>⚙</span> Settings
+        </button>
+      </div>
     </aside>
   );
 }

@@ -76,6 +76,9 @@ export function RowBody({ item, dragProps, isSub = false, progress, collapsed, o
           : "border-black/5 bg-white/85 hover:bg-white dark:border-white/5 dark:bg-zinc-900/75 dark:hover:bg-zinc-900"
       }`}
     >
+      {item.color && (
+        <span data-color-bar className="absolute inset-y-0 left-0 w-1" style={{ background: item.color }} />
+      )}
       <span
         {...dragProps}
         title="Drag to reorder"
