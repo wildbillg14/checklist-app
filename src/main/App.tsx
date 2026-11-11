@@ -22,6 +22,9 @@ export default function App() {
 
   useEffect(() => {
     void useStore.getState().init();
+    // Overdue status changes with time: refresh once a minute.
+    const t = window.setInterval(() => void useStore.getState().refreshData(), 60_000);
+    return () => window.clearInterval(t);
   }, []);
 
   useDataChanged((scope) => {

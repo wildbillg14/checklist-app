@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import * as api from "../shared/api";
 import { useStore } from "../shared/store";
-import type { Item } from "../shared/types";
+import { formatDue, fromInputs, isOverdue, toDateInput, toTimeInput } from "../shared/dates";
+import { HEADS_UP_OPTIONS, type HeadsUpMinutes, type Item } from "../shared/types";
 import ColorPicker from "./ColorPicker";
 
 /** Right-hand panel for the selected item: title, color, list. */
@@ -65,6 +66,8 @@ function Editor({ item }: { item: Item }) {
         <ColorPicker value={item.color} onChange={(c) => void api.setItemColor(item.id, c)} />
       </Field>
 
+      {!ownIsTemplate && <DueEditor item={item} />}
+
       <Field label="List">
         <select
           value={item.parentId === null ? item.listId : ""}
@@ -95,6 +98,83 @@ function Editor({ item }: { item: Item }) {
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Optional due date + optional time + optional early heads-up. */
+function DueEditor({ item }: { item: Item }) {
+  const date = item.dueAt !== null ? toDateInput(item.dueAt) : "";
+  const time = item.dueAt !== null && !item.dueAllDay ? toTimeInput(item.dueAt) : "";
+  const overdue = isOverdue(item);
+
+  const save = (nextDate: string, nextTime: string, headsUp: HeadsUpMinutes | null) => {
+    if (!nextDate) {
+      void api.setItemDue(item.id, null, false, null);
+      return;
+    }
+    const allDay = !nextTime;
+    void api.setItemDue(item.id, fromInputs(nextDate, allDay ? null : nextTime), allDay, allDay ? null : headsUp);
+  };
+
+  const inputCls =
+    "min-w-0 rounded-md border border-black/10 bg-white/80 px-2 py-1.5 text-sm outline-none focus:border-sky-400 dark:border-white/10 dark:bg-zinc-800/80 dark:[color-scheme:dark]";
+
+  return (
+    <Field label="Due">
+      <div className="flex gap-2">
+        <input
+          type="date"
+          aria-label="Due date"
+          value={date}
+          onChange={(e) => save(e.target.value, time, item.headsUpMinutes)}
+          className={`${inputCls} flex-1`}
+        />
+        <input
+          type="time"
+          aria-label="Due time"
+          value={time}
+          disabled={!date}
+          onChange={(e) => save(date, e.target.value, item.headsUpMinutes)}
+          className={`${inputCls} w-28 disabled:opacity-40`}
+        />
+      </div>
+      {date && (
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Early heads-up"
+            value={item.headsUpMinutes ?? ""}
+            disabled={!time}
+            onChange={(e) => save(date, time, e.target.value ? (Number(e.target.value) as HeadsUpMinutes) : null)}
+            className={`${inputCls} flex-1 disabled:opacity-40`}
+            title={time ? "Extra reminder before the due time" : "Set a time to enable reminders"}
+          >
+            <option value="">{time ? "Remind at due time only" : "No reminder (all day)"}</option>
+            {HEADS_UP_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                Also {m === 60 ? "1 hour" : `${m} min`} before
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => save("", "", null)}
+            className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-black/5 dark:text-zinc-400 dark:hover:bg-white/10"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      {!date && (
+        <button
+          type="button"
+          onClick={() => save(toDateInput(Date.now()), "", null)}
+          className="self-start rounded px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950"
+        >
+          + Due today
+        </button>
+      )}
+      {overdue && <span className="text-xs font-medium text-red-600 dark:text-red-400">Overdue · {formatDue(item)}</span>}
+    </Field>
   );
 }
 

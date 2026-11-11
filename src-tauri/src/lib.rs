@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod reminders;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -8,10 +9,12 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let conn = db::open(&dir)?;
             app.manage(db::Db(Mutex::new(conn)));
+            reminders::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

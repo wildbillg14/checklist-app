@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import * as api from "../shared/api";
+import { formatDue, isOverdue } from "../shared/dates";
 import { useStore } from "../shared/store";
 import type { Item } from "../shared/types";
 import InlineEdit from "./InlineEdit";
@@ -62,6 +63,7 @@ export function RowBody({ item, dragProps, isSub = false, progress, collapsed, o
   const lists = useStore((s) => s.lists);
   const [editing, setEditing] = useState(false);
   const done = item.completedAt !== null;
+  const overdue = isOverdue(item);
   const ownIsTemplate = lists.find((l) => l.id === item.listId)?.isTemplate ?? false;
   const moveTargets = lists.filter((l) => l.isTemplate === ownIsTemplate && (l.id !== item.listId || isSub));
 
@@ -70,10 +72,13 @@ export function RowBody({ item, dragProps, isSub = false, progress, collapsed, o
       data-item-id={item.id}
       onClick={() => selectItem(item.id)}
       onDoubleClick={() => setEditing(true)}
+      data-overdue={overdue || undefined}
       className={`group relative flex items-center gap-2 overflow-hidden rounded-lg border py-1.5 pl-2 pr-2 text-sm shadow-sm transition-colors ${
         selected
           ? "border-sky-400 bg-white dark:bg-zinc-800"
-          : "border-black/5 bg-white/85 hover:bg-white dark:border-white/5 dark:bg-zinc-900/75 dark:hover:bg-zinc-900"
+          : overdue
+            ? "border-red-300 bg-red-50/90 hover:bg-red-50 dark:border-red-900/80 dark:bg-red-950/60 dark:hover:bg-red-950/80"
+            : "border-black/5 bg-white/85 hover:bg-white dark:border-white/5 dark:bg-zinc-900/75 dark:hover:bg-zinc-900"
       }`}
     >
       {item.color && (
@@ -122,6 +127,24 @@ export function RowBody({ item, dragProps, isSub = false, progress, collapsed, o
       ) : (
         <span className={`flex-1 truncate ${done ? "text-zinc-400 line-through dark:text-zinc-500" : ""}`}>
           {item.title}
+        </span>
+      )}
+
+      {item.dueAt !== null && (
+        <span
+          data-due
+          title={overdue ? "Overdue" : "Due"}
+          className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${
+            overdue
+              ? "bg-red-100 font-medium text-red-700 dark:bg-red-900/60 dark:text-red-200"
+              : done
+                ? "text-zinc-400"
+                : "text-zinc-500 dark:text-zinc-400"
+          }`}
+        >
+          {overdue ? "⚠ " : ""}
+          {formatDue(item)}
+          {item.headsUpMinutes ? " 🔔" : ""}
         </span>
       )}
 
