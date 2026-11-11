@@ -14,18 +14,30 @@ import * as api from "../shared/api";
 import { useStore } from "../shared/store";
 import type { List } from "../shared/types";
 import InlineEdit from "./InlineEdit";
+import { newListFromTemplate } from "./templates";
+import { IconButton } from "./ui";
 
 export default function Sidebar() {
   const lists = useStore((s) => s.lists);
   const creatingList = useStore((s) => s.creatingList);
   const setCreatingList = useStore((s) => s.setCreatingList);
+  const creatingTemplate = useStore((s) => s.creatingTemplate);
+  const setCreatingTemplate = useStore((s) => s.setCreatingTemplate);
   const inbox = lists.find((l) => l.isInbox);
   const userLists = lists.filter((l) => !l.isInbox && !l.isTemplate);
+  const templates = lists.filter((l) => l.isTemplate);
+
+  const createAndOpen = async (name: string | null, isTemplate: boolean) => {
+    if (!name) return;
+    const list = await api.createList(name, isTemplate);
+    useStore.getState().setView({ kind: "list", listId: list.id });
+  };
 
   return (
     <aside className="panel flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r border-black/5 p-3 dark:border-white/5">
       <div className="mb-2 px-2 text-lg font-semibold tracking-tight">Checklist</div>
 
+      <DueTodayRow />
       {inbox && <ListRow list={inbox} />}
 
       <SectionHeader label="Lists" onAdd={() => setCreatingList(true)} addTitle="New list (Ctrl+N)" />
@@ -33,16 +45,55 @@ export default function Sidebar() {
       {creatingList && (
         <NewListInput
           placeholder="List name"
-          onDone={async (name) => {
+          onDone={(name) => {
             setCreatingList(false);
-            if (name) {
-              const list = await api.createList(name);
-              useStore.getState().setView({ kind: "list", listId: list.id });
-            }
+            void createAndOpen(name, false);
           }}
         />
       )}
+
+      <SectionHeader label="Templates" onAdd={() => setCreatingTemplate(true)} addTitle="New template" />
+      <SortableLists lists={templates} />
+      {creatingTemplate && (
+        <NewListInput
+          placeholder="Template name"
+          onDone={(name) => {
+            setCreatingTemplate(false);
+            void createAndOpen(name, true);
+          }}
+        />
+      )}
+      {templates.length === 0 && !creatingTemplate && (
+        <p className="px-2 py-1 text-xs text-zinc-400 dark:text-zinc-500">
+          Reusable checklists. Use “Save as template” on any list.
+        </p>
+      )}
     </aside>
+  );
+}
+
+function DueTodayRow() {
+  const active = useStore((s) => s.view?.kind === "today");
+  const setView = useStore((s) => s.setView);
+  const overdue = useStore((s) => s.today.overdue.length);
+  const today = useStore((s) => s.today.today.length);
+  return (
+    <div
+      onClick={() => setView({ kind: "today" })}
+      data-nav="today"
+      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+        active ? "bg-black/10 font-medium dark:bg-white/15" : "hover:bg-black/5 dark:hover:bg-white/10"
+      }`}
+    >
+      <span className="w-2.5 text-center text-xs">☀</span>
+      <span className="flex-1">Due today</span>
+      {overdue > 0 && (
+        <span className="rounded-full bg-red-500 px-1.5 text-xs font-medium text-white" title="Overdue">
+          {overdue}
+        </span>
+      )}
+      {today > 0 && <span className="text-xs text-zinc-500 dark:text-zinc-400">{today}</span>}
+    </div>
   );
 }
 
@@ -54,6 +105,7 @@ export function SectionHeader({ label, onAdd, addTitle }: { label: string; onAdd
         <button
           onClick={onAdd}
           title={addTitle}
+          aria-label={addTitle}
           className="rounded px-1.5 text-base leading-none hover:bg-black/5 dark:hover:bg-white/10"
         >
           +
@@ -63,7 +115,7 @@ export function SectionHeader({ label, onAdd, addTitle }: { label: string; onAdd
   );
 }
 
-export function NewListInput({ placeholder, onDone }: { placeholder: string; onDone: (name: string | null) => void }) {
+function NewListInput({ placeholder, onDone }: { placeholder: string; onDone: (name: string | null) => void }) {
   return (
     <div className="px-1 py-1">
       <InlineEdit
@@ -77,7 +129,7 @@ export function NewListInput({ placeholder, onDone }: { placeholder: string; onD
   );
 }
 
-export function SortableLists({ lists }: { lists: List[] }) {
+function SortableLists({ lists }: { lists: List[] }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -85,12 +137,12 @@ export function SortableLists({ lists }: { lists: List[] }) {
     if (!over || active.id === over.id) return;
     const from = lists.findIndex((l) => l.id === active.id);
     const to = lists.findIndex((l) => l.id === over.id);
+    if (from < 0 || to < 0) return;
     const reordered = arrayMove(lists, from, to);
     // Optimistic: patch the store, keep lists outside this section untouched.
     const all = useStore.getState().lists;
     const ids = new Set(lists.map((l) => l.id));
-    const others = all.filter((l) => !ids.has(l.id));
-    useStore.getState().setListsLocal([...others, ...reordered]);
+    useStore.getState().setListsLocal([...all.filter((l) => !ids.has(l.id)), ...reordered]);
     void api.reorderLists(reordered.map((l) => l.id));
   };
 
@@ -119,7 +171,7 @@ function SortableListRow({ list }: { list: List }) {
   );
 }
 
-export function ListRow({ list }: { list: List }) {
+function ListRow({ list }: { list: List }) {
   const active = useStore((s) => s.view?.kind === "list" && s.view.listId === list.id);
   const setView = useStore((s) => s.setView);
   const [editing, setEditing] = useState(false);
@@ -137,6 +189,7 @@ export function ListRow({ list }: { list: List }) {
 
   return (
     <div
+      data-list-id={list.id}
       onClick={() => setView({ kind: "list", listId: list.id })}
       onDoubleClick={() => !list.isInbox && setEditing(true)}
       className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
@@ -144,7 +197,7 @@ export function ListRow({ list }: { list: List }) {
       }`}
     >
       <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        className={`h-2.5 w-2.5 shrink-0 ${list.isTemplate ? "rounded-sm" : "rounded-full"}`}
         style={{ background: list.accentColor ?? (list.isInbox ? "#0ea5e9" : "#a1a1aa") }}
       />
       {editing ? (
@@ -162,39 +215,21 @@ export function ListRow({ list }: { list: List }) {
       )}
       {!list.isInbox && !editing && (
         <span className="hidden gap-0.5 group-hover:flex">
+          {list.isTemplate && (
+            <IconButton
+              title="New list from template"
+              onClick={(e) => {
+                e.stopPropagation();
+                void newListFromTemplate(list);
+              }}
+            >
+              ⧉
+            </IconButton>
+          )}
           <IconButton title="Rename" onClick={(e) => { e.stopPropagation(); setEditing(true); }}>✎</IconButton>
           <IconButton title="Delete" onClick={remove}>✕</IconButton>
         </span>
       )}
     </div>
-  );
-}
-
-export function IconButton({
-  children,
-  title,
-  onClick,
-  active = false,
-  className = "",
-}: {
-  children: React.ReactNode;
-  title: string;
-  onClick: (e: React.MouseEvent) => void;
-  active?: boolean;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      onPointerDown={(e) => e.stopPropagation()}
-      className={`rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-black/10 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/15 dark:hover:text-zinc-50 ${
-        active ? "bg-black/10 text-zinc-900 dark:bg-white/15 dark:text-zinc-50" : ""
-      } ${className}`}
-    >
-      {children}
-    </button>
   );
 }

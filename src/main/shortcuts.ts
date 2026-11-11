@@ -5,7 +5,13 @@ import { useStore } from "../shared/store";
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") useStore.getState().selectItem(null);
+      const s = useStore.getState();
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        s.setSearchOpen(true);
+        return;
+      }
+      if (e.key === "Escape") s.selectItem(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

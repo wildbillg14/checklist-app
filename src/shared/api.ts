@@ -4,7 +4,15 @@
 
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { ReportedError, toastError } from "./toast";
-import type { Item, List, SettingKey, Settings } from "./types";
+import type {
+  HeadsUpMinutes,
+  Item,
+  ItemWithContext,
+  List,
+  SettingKey,
+  Settings,
+  TodayView,
+} from "./types";
 
 async function call<T>(cmd: string, args?: InvokeArgs): Promise<T> {
   try {
@@ -39,6 +47,22 @@ export const deleteItem = (id: number) => call<void>("delete_item", { id });
 export const reorderItems = (ids: number[]) => call<void>("reorder_items", { ids });
 export const moveItem = (id: number, listId: number) => call<void>("move_item", { id, listId });
 export const clearCompleted = (listId: number) => call<number>("clear_completed", { listId });
+export const setItemDue = (
+  id: number,
+  dueAt: number | null,
+  allDay: boolean,
+  headsUpMinutes: HeadsUpMinutes | null,
+) => call<void>("set_item_due", { id, dueAt, allDay, headsUpMinutes });
+
+// Templates
+export const saveListAsTemplate = (listId: number, name: string) =>
+  call<List>("save_list_as_template", { listId, name });
+export const createListFromTemplate = (templateId: number, name: string) =>
+  call<List>("create_list_from_template", { templateId, name });
+
+// Cross-list views
+export const search = (query: string) => call<ItemWithContext[]>("search", { query });
+export const getToday = () => call<TodayView>("get_today");
 
 // Settings
 export const getSettings = () => call<Partial<Settings>>("get_settings");

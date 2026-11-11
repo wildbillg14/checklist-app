@@ -30,6 +30,11 @@ pub fn run() {
             commands::reorder_items,
             commands::move_item,
             commands::clear_completed,
+            commands::set_item_due,
+            commands::save_list_as_template,
+            commands::create_list_from_template,
+            commands::search,
+            commands::get_today,
             commands::get_settings,
             commands::set_setting,
         ])

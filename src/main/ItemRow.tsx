@@ -5,39 +5,72 @@ import * as api from "../shared/api";
 import { useStore } from "../shared/store";
 import type { Item } from "../shared/types";
 import InlineEdit from "./InlineEdit";
-import { IconButton } from "./Sidebar";
+import { IconButton } from "./ui";
+import SubItems from "./SubItems";
 
 interface Props {
   item: Item;
+  /** Sub-items of this (top-level) item, in order. */
+  subItems?: Item[];
   sortable?: boolean;
 }
 
-export default function ItemRow({ item, sortable = false }: Props) {
+/** A top-level item row, with its collapsible sub-items underneath. */
+export default function ItemRow({ item, subItems = [], sortable = false }: Props) {
   const s = useSortable({ id: item.id, disabled: !sortable });
+  const collapsed = useStore((st) => !!st.collapsed[item.id]);
+  const toggleCollapsed = useStore((st) => st.toggleCollapsed);
+  const [addingSub, setAddingSub] = useState(false);
   const style = sortable
     ? { transform: CSS.Transform.toString(s.transform), transition: s.transition, opacity: s.isDragging ? 0.6 : 1 }
     : undefined;
+  const done = subItems.filter((c) => c.completedAt !== null).length;
 
   return (
-    <li ref={s.setNodeRef} style={style} className="list-none" data-item-id={item.id}>
-      <RowBody item={item} dragProps={sortable ? { ...s.attributes, ...s.listeners } : undefined} />
+    <li ref={s.setNodeRef} style={style} className="list-none">
+      <RowBody
+        item={item}
+        dragProps={sortable ? { ...s.attributes, ...s.listeners } : undefined}
+        progress={subItems.length > 0 ? { done, total: subItems.length } : undefined}
+        collapsed={collapsed}
+        onToggleCollapse={() => toggleCollapsed(item.id)}
+        onAddSub={() => {
+          toggleCollapsed(item.id, false);
+          setAddingSub(true);
+        }}
+      />
+      {(!collapsed || addingSub) && (subItems.length > 0 || addingSub) && (
+        <SubItems parent={item} items={subItems} adding={addingSub} onDoneAdding={() => setAddingSub(false)} />
+      )}
     </li>
   );
 }
 
-function RowBody({ item, dragProps }: { item: Item; dragProps?: Record<string, unknown> }) {
+interface BodyProps {
+  item: Item;
+  dragProps?: Record<string, unknown>;
+  isSub?: boolean;
+  progress?: { done: number; total: number };
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  onAddSub?: () => void;
+}
+
+export function RowBody({ item, dragProps, isSub = false, progress, collapsed, onToggleCollapse, onAddSub }: BodyProps) {
   const selected = useStore((s) => s.selectedItemId === item.id);
   const selectItem = useStore((s) => s.selectItem);
   const lists = useStore((s) => s.lists);
   const [editing, setEditing] = useState(false);
   const done = item.completedAt !== null;
-  const moveTargets = lists.filter((l) => l.id !== item.listId && l.isTemplate === isTemplateList(lists, item.listId));
+  const ownIsTemplate = lists.find((l) => l.id === item.listId)?.isTemplate ?? false;
+  const moveTargets = lists.filter((l) => l.isTemplate === ownIsTemplate && (l.id !== item.listId || isSub));
 
   return (
     <div
+      data-item-id={item.id}
       onClick={() => selectItem(item.id)}
       onDoubleClick={() => setEditing(true)}
-      className={`group relative flex items-center gap-2 overflow-hidden rounded-lg border px-2 py-1.5 text-sm shadow-sm transition-colors ${
+      className={`group relative flex items-center gap-2 overflow-hidden rounded-lg border py-1.5 pl-2 pr-2 text-sm shadow-sm transition-colors ${
         selected
           ? "border-sky-400 bg-white dark:bg-zinc-800"
           : "border-black/5 bg-white/85 hover:bg-white dark:border-white/5 dark:bg-zinc-900/75 dark:hover:bg-zinc-900"
@@ -50,6 +83,21 @@ function RowBody({ item, dragProps }: { item: Item; dragProps?: Record<string, u
       >
         ⋮⋮
       </span>
+      {!isSub && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapse?.();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`w-3 text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 ${progress ? "" : "invisible"}`}
+          aria-label={collapsed ? "Expand sub-items" : "Collapse sub-items"}
+          title={collapsed ? "Expand sub-items" : "Collapse sub-items"}
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
+      )}
       <input
         type="checkbox"
         checked={done}
@@ -74,8 +122,24 @@ function RowBody({ item, dragProps }: { item: Item; dragProps?: Record<string, u
         </span>
       )}
 
+      {progress && (
+        <span
+          data-progress
+          className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${
+            progress.done === progress.total
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+              : "bg-black/5 text-zinc-500 dark:bg-white/10 dark:text-zinc-400"
+          }`}
+        >
+          {progress.done}/{progress.total}
+        </span>
+      )}
+
       {!editing && (
         <span className="hidden items-center gap-0.5 group-hover:flex">
+          {onAddSub && (
+            <IconButton title="Add sub-item" onClick={(e) => { e.stopPropagation(); onAddSub(); }}>+ sub</IconButton>
+          )}
           {moveTargets.length > 0 && (
             <select
               title="Move to another list"
@@ -91,7 +155,7 @@ function RowBody({ item, dragProps }: { item: Item; dragProps?: Record<string, u
               <option value="">Move…</option>
               {moveTargets.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.name}
+                  {l.id === item.listId ? `${l.name} (top level)` : l.name}
                 </option>
               ))}
             </select>
@@ -102,8 +166,4 @@ function RowBody({ item, dragProps }: { item: Item; dragProps?: Record<string, u
       )}
     </div>
   );
-}
-
-function isTemplateList(lists: { id: number; isTemplate: boolean }[], id: number): boolean {
-  return lists.find((l) => l.id === id)?.isTemplate ?? false;
 }

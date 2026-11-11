@@ -451,6 +451,170 @@ pub fn clear_completed(conn: &Connection, list_id: i64) -> Result<usize, String>
     .db()
 }
 
+/// Set (or clear) an item's due date. Any change resets both notification stamps.
+/// `all_day` means "due on this local day, no specific time" (`due_at` = local midnight).
+pub fn set_item_due(
+    conn: &Connection,
+    id: i64,
+    due_at: Option<i64>,
+    all_day: bool,
+    heads_up_minutes: Option<i64>,
+) -> Result<(), String> {
+    get_item(conn, id)?;
+    if let Some(m) = heads_up_minutes {
+        if ![5, 15, 30, 60].contains(&m) {
+            return Err(format!("Heads-up must be 5, 15, 30 or 60 minutes (got {m})"));
+        }
+    }
+    // A heads-up only makes sense for a timed due date.
+    let heads_up = if due_at.is_some() && !all_day { heads_up_minutes } else { None };
+    let all_day = due_at.is_some() && all_day;
+    conn.execute(
+        "UPDATE items SET due_at = ?1, due_all_day = ?2, heads_up_minutes = ?3, \
+         notified_at = NULL, heads_up_notified_at = NULL WHERE id = ?4",
+        params![due_at, all_day, heads_up, id],
+    )
+    .db()?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+/// Copy a list and its items into a new list. Copies come back unchecked,
+/// with no due dates or reminders; colors and sub-item structure are kept.
+fn copy_list(conn: &Connection, src: &List, name: &str, as_template: bool) -> Result<List, String> {
+    let tx = conn.unchecked_transaction().db()?;
+    let new_list = create_list(&tx, name, as_template)?;
+    if src.accent_color.is_some() {
+        set_list_accent(&tx, new_list.id, src.accent_color.clone())?;
+    }
+    let items = get_items(&tx, src.id)?; // top-level first, so parents exist before children
+    let mut id_map = std::collections::HashMap::new();
+    {
+        let mut insert = tx
+            .prepare(
+                "INSERT INTO items (list_id, parent_id, title, color, position, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .db()?;
+        let now = now_ms();
+        for it in &items {
+            let parent = match it.parent_id {
+                Some(p) => match id_map.get(&p) {
+                    Some(np) => Some(*np),
+                    None => continue,
+                },
+                None => None,
+            };
+            insert
+                .execute(params![new_list.id, parent, it.title, it.color, it.position, now])
+                .db()?;
+            id_map.insert(it.id, tx.last_insert_rowid());
+        }
+    }
+    tx.commit().db()?;
+    get_list(conn, new_list.id)
+}
+
+pub fn save_list_as_template(conn: &Connection, list_id: i64, name: &str) -> Result<List, String> {
+    let src = get_list(conn, list_id)?;
+    if src.is_inbox {
+        return Err("The Inbox can't be turned into a template".into());
+    }
+    if src.is_template {
+        return Err("That list is already a template".into());
+    }
+    copy_list(conn, &src, name, true)
+}
+
+pub fn create_list_from_template(conn: &Connection, template_id: i64, name: &str) -> Result<List, String> {
+    let src = get_list(conn, template_id)?;
+    if !src.is_template {
+        return Err(format!("\"{}\" is not a template", src.name));
+    }
+    copy_list(conn, &src, name, false)
+}
+
+// ---------------------------------------------------------------------------
+// Cross-list queries: search + today
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemWithContext {
+    #[serde(flatten)]
+    pub item: Item,
+    pub list_name: String,
+    pub list_accent: Option<String>,
+    pub parent_title: Option<String>,
+}
+
+const CONTEXT_FROM: &str = "FROM items i \
+    JOIN lists l ON l.id = i.list_id \
+    LEFT JOIN items p ON p.id = i.parent_id";
+
+fn context_from_row(r: &Row) -> rusqlite::Result<ItemWithContext> {
+    Ok(ItemWithContext {
+        item: item_from_row(r)?,
+        list_name: r.get(ITEM_COL_COUNT)?,
+        list_accent: r.get(ITEM_COL_COUNT + 1)?,
+        parent_title: r.get(ITEM_COL_COUNT + 2)?,
+    })
+}
+
+fn query_context(conn: &Connection, where_order: &str, args: impl rusqlite::Params) -> Result<Vec<ItemWithContext>, String> {
+    let sql = format!("SELECT {ITEM_COLS}, l.name, l.accent_color, p.title {CONTEXT_FROM} {where_order}");
+    let mut stmt = conn.prepare(&sql).db()?;
+    let rows = stmt.query_map(args, context_from_row).db()?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().db()
+}
+
+/// Case-insensitive substring search over all non-template lists (sub-items included).
+pub fn search(conn: &Connection, query: &str) -> Result<Vec<ItemWithContext>, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+    let escaped = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    query_context(
+        conn,
+        "WHERE l.is_template = 0 AND i.title LIKE '%' || ?1 || '%' ESCAPE '\\' \
+         ORDER BY i.completed_at IS NOT NULL, l.is_inbox DESC, l.position, i.position LIMIT 200",
+        [escaped],
+    )
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayView {
+    pub overdue: Vec<ItemWithContext>,
+    pub today: Vec<ItemWithContext>,
+}
+
+/// Local-day boundaries (epoch ms) are passed in so the logic is testable.
+/// Overdue: timed items past due, or all-day items from an earlier day.
+/// Today: due within [today_start, tomorrow_start) and not overdue — timed by time, then all-day.
+pub fn get_today(conn: &Connection, now: i64, today_start: i64, tomorrow_start: i64) -> Result<TodayView, String> {
+    let base = "WHERE l.is_template = 0 AND i.completed_at IS NULL AND i.due_at IS NOT NULL";
+    let overdue_cond = "((i.due_all_day = 0 AND i.due_at < ?1) OR (i.due_all_day = 1 AND i.due_at < ?2))";
+    let overdue = query_context(
+        conn,
+        &format!("{base} AND {overdue_cond} ORDER BY i.due_at, i.position"),
+        params![now, today_start],
+    )?;
+    let today = query_context(
+        conn,
+        &format!(
+            "{base} AND i.due_at >= ?2 AND i.due_at < ?3 AND NOT {overdue_cond} \
+             ORDER BY i.due_all_day, i.due_at, l.position, i.position"
+        ),
+        params![now, today_start, tomorrow_start],
+    )?;
+    Ok(TodayView { overdue, today })
+}
+
 // ---------------------------------------------------------------------------
 // Settings (JSON values)
 // ---------------------------------------------------------------------------
@@ -593,6 +757,91 @@ pub mod tests {
         assert!(set_item_color(&conn, a.id, Some("red".into())).is_err());
         set_item_color(&conn, a.id, Some("#FF0000".into())).unwrap();
         assert_eq!(get_item(&conn, a.id).unwrap().color.as_deref(), Some("#ff0000"));
+    }
+
+    #[test]
+    fn template_roundtrip_strips_state() {
+        let conn = mem();
+        let trip = create_list(&conn, "Trip", false).unwrap();
+        set_list_accent(&conn, trip.id, Some("#22c55e".into())).unwrap();
+        let p = create_item(&conn, trip.id, None, "Pack").unwrap();
+        let c = create_item(&conn, trip.id, Some(p.id), "Socks").unwrap();
+        set_item_color(&conn, p.id, Some("#ef4444".into())).unwrap();
+        set_item_completed(&conn, c.id, true).unwrap();
+        set_item_due(&conn, p.id, Some(1_000), false, Some(15)).unwrap();
+
+        let tpl = save_list_as_template(&conn, trip.id, "Trip template").unwrap();
+        assert!(tpl.is_template);
+        assert_eq!(tpl.accent_color.as_deref(), Some("#22c55e"));
+        let ti = get_items(&conn, tpl.id).unwrap();
+        assert_eq!(ti.len(), 2);
+        assert!(ti.iter().all(|i| i.completed_at.is_none() && i.due_at.is_none() && i.heads_up_minutes.is_none()));
+        let tp = ti.iter().find(|i| i.title == "Pack").unwrap();
+        assert_eq!(tp.color.as_deref(), Some("#ef4444"));
+        assert_eq!(ti.iter().find(|i| i.title == "Socks").unwrap().parent_id, Some(tp.id));
+
+        let fresh = create_list_from_template(&conn, tpl.id, "Trip #2").unwrap();
+        assert!(!fresh.is_template);
+        assert_eq!(get_items(&conn, fresh.id).unwrap().len(), 2);
+
+        assert!(create_list_from_template(&conn, trip.id, "x").is_err());
+        assert!(save_list_as_template(&conn, inbox_id(&conn).unwrap(), "x").is_err());
+    }
+
+    #[test]
+    fn search_finds_subitems_but_not_templates() {
+        let conn = mem();
+        let inbox = inbox_id(&conn).unwrap();
+        let p = create_item(&conn, inbox, None, "Groceries").unwrap();
+        create_item(&conn, inbox, Some(p.id), "Buy 100% juice").unwrap();
+        let tpl = create_list(&conn, "Tpl", true).unwrap();
+        create_item(&conn, tpl.id, None, "juice in template").unwrap();
+        let hits = search(&conn, "JUICE").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].parent_title.as_deref(), Some("Groceries"));
+        assert_eq!(hits[0].list_name, "Inbox");
+        assert_eq!(search(&conn, "100%").unwrap().len(), 1);
+        assert_eq!(search(&conn, "%").unwrap().len(), 1); // literal, not wildcard
+    }
+
+    #[test]
+    fn today_view_splits_overdue_and_today() {
+        let conn = mem();
+        let inbox = inbox_id(&conn).unwrap();
+        let day = 86_400_000;
+        let (start, end) = (10 * day, 11 * day);
+        let now = start + 12 * 3_600_000; // noon
+        let mk = |t: &str, due: i64, all_day: bool| {
+            let it = create_item(&conn, inbox, None, t).unwrap();
+            set_item_due(&conn, it.id, Some(due), all_day, None).unwrap();
+            it
+        };
+        mk("morning", start + 9 * 3_600_000, false); // overdue (timed, passed)
+        mk("evening", start + 18 * 3_600_000, false); // today
+        mk("allday", start, true); // today (untimed)
+        mk("yesterday-allday", start - day, true); // overdue
+        mk("tomorrow", end + 1, false); // neither
+        let done = mk("done", start + 13 * 3_600_000, false);
+        set_item_completed(&conn, done.id, true).unwrap();
+
+        let v = get_today(&conn, now, start, end).unwrap();
+        let o: Vec<_> = v.overdue.iter().map(|i| i.item.title.as_str()).collect();
+        let t: Vec<_> = v.today.iter().map(|i| i.item.title.as_str()).collect();
+        assert_eq!(o, ["yesterday-allday", "morning"]);
+        assert_eq!(t, ["evening", "allday"]);
+    }
+
+    #[test]
+    fn changing_due_resets_notifications() {
+        let conn = mem();
+        let inbox = inbox_id(&conn).unwrap();
+        let it = create_item(&conn, inbox, None, "x").unwrap();
+        set_item_due(&conn, it.id, Some(5), false, Some(5)).unwrap();
+        conn.execute("UPDATE items SET notified_at = 1, heads_up_notified_at = 1", []).unwrap();
+        set_item_due(&conn, it.id, Some(6), false, Some(5)).unwrap();
+        let it = get_item(&conn, it.id).unwrap();
+        assert!(it.notified_at.is_none() && it.heads_up_notified_at.is_none());
+        assert!(set_item_due(&conn, it.id, Some(6), false, Some(7)).is_err());
     }
 
     #[test]

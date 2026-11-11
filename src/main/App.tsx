@@ -4,10 +4,14 @@ import { useDataChanged } from "../shared/useDataChanged";
 import Toasts from "../shared/Toasts";
 import Sidebar from "./Sidebar";
 import ListView from "./ListView";
+import DueTodayView from "./DueTodayView";
+import SearchBar from "./SearchBar";
+import TemplateDialog from "./TemplateDialog";
 import { useShortcuts } from "./shortcuts";
 
 export default function App() {
   const loaded = useStore((s) => s.loaded);
+  const viewKind = useStore((s) => s.view?.kind);
 
   useEffect(() => {
     void useStore.getState().init();
@@ -25,9 +29,11 @@ export default function App() {
       {loaded && (
         <>
           <Sidebar />
-          <ListView />
+          {viewKind === "today" ? <DueTodayView /> : <ListView />}
         </>
       )}
+      <SearchBar />
+      <TemplateDialog />
       <Toasts />
     </div>
   );
