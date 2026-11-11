@@ -5,9 +5,13 @@
   "windows": ["main", "widget"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "dialog:allow-ask",
-    "dialog:allow-open",
     "dialog:allow-confirm",
-    "dialog:allow-message"
+    "dialog:allow-message",
+    "dialog:allow-open",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

@@ -9,6 +9,7 @@ import type {
   Item,
   ItemWithContext,
   List,
+  Mode,
   SettingKey,
   Settings,
   TodayView,
@@ -63,6 +64,14 @@ export const createListFromTemplate = (templateId: number, name: string) =>
 // Cross-list views
 export const search = (query: string) => call<ItemWithContext[]>("search", { query });
 export const getToday = () => call<TodayView>("get_today");
+
+// Mini view: quick-add goes to the Inbox, due today (at `dueAt` if a time was given, else all day).
+export const quickAdd = (title: string, dueAt: number | null) => call<Item>("quick_add", { title, dueAt });
+
+// Windows / modes (implemented in Rust so the tray and hotkey stay in sync)
+export const toggleMode = () => call<Mode>("toggle_mode");
+export const setPinned = (pinned: boolean) => call<void>("set_pinned", { pinned });
+export const setWidgetCollapsed = (collapsed: boolean) => call<void>("set_widget_collapsed", { collapsed });
 
 // Background image: copies the picked file into {app_data_dir}/backgrounds and returns the new path.
 export const importBackground = (source: string) => call<string>("import_background", { source });

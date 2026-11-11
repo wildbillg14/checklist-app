@@ -18,7 +18,23 @@
         "width": 1000,
         "height": 700,
         "minWidth": 640,
-        "minHeight": 420
+        "minHeight": 420,
+        "visible": false
+      },
+      {
+        "label": "widget",
+        "title": "Checklist — Mini view",
+        "url": "widget.html",
+        "width": 320,
+        "height": 420,
+        "minWidth": 240,
+        "minHeight": 42,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "skipTaskbar": true,
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {

@@ -13,10 +13,20 @@ interface Props {
   subtle?: boolean;
   /** 0–1 multiplier for the whole layer (widget opacity). */
   opacity?: number;
+  /** Position inside the parent (so rounded corners clip it) instead of the viewport. */
+  contained?: boolean;
 }
 
 /** Full-window background layer: color/gradient/image + blur + dim overlay. */
-export default function Background({ background, dim, blur, dark, subtle = false, opacity = 1 }: Props) {
+export default function Background({
+  background,
+  dim,
+  blur,
+  dark,
+  subtle = false,
+  opacity = 1,
+  contained = false,
+}: Props) {
   const style: React.CSSProperties = {};
   if (background.kind === "solid") style.background = background.color;
   else if (background.kind === "gradient") style.background = gradientCss(background.id);
@@ -35,7 +45,11 @@ export default function Background({ background, dim, blur, dark, subtle = false
   const overlay = dark ? `rgba(9, 9, 11, ${overlayAlpha})` : `rgba(255, 255, 255, ${overlayAlpha})`;
 
   return (
-    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" style={{ opacity }} aria-hidden>
+    <div
+      className={`pointer-events-none inset-0 overflow-hidden ${contained ? "absolute" : "fixed -z-10"}`}
+      style={{ opacity }}
+      aria-hidden
+    >
       <div data-bg-layer className="absolute inset-0" style={style} />
       <div className="absolute inset-0" style={{ background: overlay }} />
     </div>

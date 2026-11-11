@@ -177,6 +177,23 @@ pub fn get_today(db: State<Db>) -> Result<TodayView, String> {
     db::get_today(&*db.conn()?, now, start, end)
 }
 
+// ----- Mini view quick add ---------------------------------------------------
+
+/// Add a task to the Inbox, due today: at `due_at` if a time was given, else all day.
+#[tauri::command]
+pub fn quick_add(app: AppHandle, db: State<Db>, title: String, due_at: Option<i64>) -> Result<Item, String> {
+    let (_, today_start, _) = local_day_bounds();
+    write(&app, &db, |c| {
+        let inbox = db::inbox_id(c)?;
+        let item = db::create_item(c, inbox, None, &title)?;
+        match due_at {
+            Some(t) => db::set_item_due(c, item.id, Some(t), false, None)?,
+            None => db::set_item_due(c, item.id, Some(today_start), true, None)?,
+        }
+        db::get_item(c, item.id)
+    })
+}
+
 // ----- Background image ----------------------------------------------------
 
 const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "gif", "bmp"];

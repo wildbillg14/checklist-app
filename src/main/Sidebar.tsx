@@ -35,7 +35,17 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
 
   return (
     <aside className="panel flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r border-black/5 p-3 dark:border-white/5">
-      <div className="mb-2 px-2 text-lg font-semibold tracking-tight">Checklist</div>
+      <div className="mb-2 flex items-center justify-between pl-2">
+        <span className="text-lg font-semibold tracking-tight">Checklist</span>
+        <div className="flex items-center">
+          <IconButton title="Search (Ctrl+F)" onClick={() => useStore.getState().setSearchOpen(true)} className="text-sm">
+            ⌕
+          </IconButton>
+          <IconButton title="Mini view (Ctrl+Shift+L)" onClick={() => void api.toggleMode()} className="text-sm">
+            <span data-mini-view>⤡</span>
+          </IconButton>
+        </div>
+      </div>
 
       <DueTodayRow />
       {inbox && <ListRow list={inbox} />}

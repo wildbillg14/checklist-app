@@ -1,5 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
+import { toastError } from "../shared/toast";
 import * as api from "../shared/api";
 import { DEFAULT_SOLID, GRADIENTS } from "../shared/colors";
 import { useStore } from "../shared/store";
@@ -142,11 +144,53 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           />
         </Section>
 
+        <Section title="System">
+          <AutostartToggle />
+        </Section>
+
         <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
           Shortcuts: Enter add task · Ctrl+N new list · Ctrl+F search · Delete remove selected · Esc cancel
         </p>
       </div>
     </div>
+  );
+}
+
+/** "Launch on Windows startup" — the app starts hidden in the tray (--minimized). */
+function AutostartToggle() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isEnabled()
+      .then(setEnabled)
+      .catch(() => setEnabled(false));
+  }, []);
+
+  const toggle = async (on: boolean) => {
+    try {
+      if (on) await enable();
+      else await disable();
+      setEnabled(await isEnabled());
+    } catch (e) {
+      toastError(`Couldn't change startup setting: ${String(e)}`);
+    }
+  };
+
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+      <span>
+        Launch on Windows startup
+        <span className="block text-xs text-zinc-500 dark:text-zinc-400">Starts hidden in the tray so reminders keep working.</span>
+      </span>
+      <input
+        type="checkbox"
+        data-autostart
+        checked={enabled ?? false}
+        disabled={enabled === null}
+        onChange={(e) => void toggle(e.target.checked)}
+        className="h-5 w-5 accent-sky-500"
+      />
+    </label>
   );
 }
 
