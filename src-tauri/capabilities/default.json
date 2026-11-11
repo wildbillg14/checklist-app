@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Permissions for the main window and the mini-view widget",
   "windows": ["main", "widget"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
+    "dialog:allow-message"
+  ]
 }
