@@ -26,6 +26,7 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
   const inbox = lists.find((l) => l.isInbox);
   const userLists = lists.filter((l) => !l.isInbox && !l.isTemplate);
   const templates = lists.filter((l) => l.isTemplate);
+  const hotkey = useStore((s) => s.settings.toggleHotkey);
 
   const createAndOpen = async (name: string | null, isTemplate: boolean) => {
     if (!name) return;
@@ -41,7 +42,7 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
           <IconButton title="Search (Ctrl+F)" onClick={() => useStore.getState().setSearchOpen(true)} className="text-sm">
             ⌕
           </IconButton>
-          <IconButton title="Mini view (Ctrl+Shift+L)" onClick={() => void api.toggleMode()} className="text-sm">
+          <IconButton title={`Mini view (${hotkey})`} onClick={() => void api.toggleMode()} className="text-sm">
             <span data-mini-view>⤡</span>
           </IconButton>
         </div>

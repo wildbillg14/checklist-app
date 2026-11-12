@@ -52,7 +52,7 @@ export default function WidgetHeader({ settings, count, overdue }: Props) {
         >
           {collapsed ? "▾" : "▴"}
         </HeaderButton>
-        <HeaderButton title="Open full window (Ctrl+Shift+L)" onClick={() => void api.toggleMode()} data-expand>
+        <HeaderButton title={`Open full window (${settings.toggleHotkey})`} onClick={() => void api.toggleMode()} data-expand>
           ⤢
         </HeaderButton>
       </header>

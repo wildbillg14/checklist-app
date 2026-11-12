@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod hotkey;
 mod reminders;
 mod tray;
 mod windows;
@@ -7,7 +8,7 @@ mod windows;
 use std::sync::Mutex;
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_window_state::StateFlags;
 
 /// Passed by the autostart entry so the app starts hidden in the tray.
@@ -15,8 +16,6 @@ const MINIMIZED_FLAG: &str = "--minimized";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let toggle_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL);
-
     tauri::Builder::default()
         // Must be first: a second launch just focuses the running app.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -36,14 +35,17 @@ pub fn run() {
         )
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if shortcut == &toggle_shortcut && event.state() == ShortcutState::Pressed {
+                .with_handler(|app, shortcut, event| {
+                    let ours = app
+                        .try_state::<hotkey::HotkeyState>()
+                        .is_some_and(|h| h.matches(shortcut));
+                    if ours && event.state() == ShortcutState::Pressed {
                         windows::toggle(app);
                     }
                 })
                 .build(),
         )
-        .setup(move |app| {
+        .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let conn = db::open(&dir)?;
             app.manage(db::Db(Mutex::new(conn)));
@@ -53,15 +55,9 @@ pub fn run() {
             app.manage(windows::AppMode(Mutex::new(mode)));
             tray::create(&handle)?;
 
-            // Another program can already own the combination; record that so
-            // Settings can tell the user instead of failing silently.
-            let hotkey_error = app.global_shortcut().register(toggle_shortcut).err().map(|e| {
-                eprintln!("Couldn't register Ctrl+Shift+L: {e}");
-                "Ctrl+Shift+L is already used by another program, so the mini-view hotkey is off. \
-                 Use the ⤡ button or the tray icon instead."
-                    .to_string()
-            });
-            app.manage(windows::HotkeyStatus(hotkey_error));
+            // Configurable toggle hotkey (default Ctrl+Alt+L); conflicts are reported in Settings.
+            hotkey::init(&handle);
+            tray::sync(&handle);
 
             reminders::start(handle);
             Ok(())
@@ -101,7 +97,9 @@ pub fn run() {
             windows::toggle_mode,
             windows::set_pinned,
             windows::set_widget_collapsed,
-            windows::hotkey_status,
+            hotkey::get_hotkey,
+            hotkey::set_hotkey,
+            hotkey::pause_hotkey,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

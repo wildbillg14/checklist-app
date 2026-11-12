@@ -186,14 +186,6 @@ pub fn restore_widget(app: &AppHandle) {
 
 // ----- commands ------------------------------------------------------------------
 
-/// `Some(message)` if the global toggle shortcut couldn't be registered.
-pub struct HotkeyStatus(pub Option<String>);
-
-#[tauri::command]
-pub fn hotkey_status(status: tauri::State<HotkeyStatus>) -> Option<String> {
-    status.0.clone()
-}
-
 #[tauri::command]
 pub fn toggle_mode(app: AppHandle) -> Result<Mode, String> {
     Ok(toggle(&app))

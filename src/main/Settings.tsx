@@ -5,7 +5,7 @@ import { toastError } from "../shared/toast";
 import * as api from "../shared/api";
 import { DEFAULT_SOLID, GRADIENTS } from "../shared/colors";
 import { useStore } from "../shared/store";
-import type { Theme } from "../shared/types";
+import type { HotkeyInfo, Theme } from "../shared/types";
 
 export default function Settings({ onClose }: { onClose: () => void }) {
   const settings = useStore((s) => s.settings);
@@ -146,11 +146,12 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
         <Section title="System">
           <AutostartToggle />
-          <HotkeyWarning />
+          <HotkeyField />
         </Section>
 
         <p className="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
-          Shortcuts: Enter add task · Ctrl+N new list · Ctrl+F search · Delete remove selected · Esc cancel
+          Shortcuts: {settings.toggleHotkey} mini view · Enter add task · Ctrl+N new list · Ctrl+F search · Delete remove
+          selected · Esc cancel
         </p>
       </div>
     </div>
@@ -195,22 +196,142 @@ function AutostartToggle() {
   );
 }
 
-function HotkeyWarning() {
-  const [warning, setWarning] = useState<string | null>(null);
+/** KeyboardEvent.code → key name the Rust side accepts (letter, digit, F1–F24, Space). */
+function keyName(code: string): string | null {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+  if (code === "Space") return "Space";
+  return null;
+}
+
+function modifiersOf(e: React.KeyboardEvent): string[] {
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Win");
+  return mods;
+}
+
+/** "Mini view hotkey": click Change, press a combo; re-registered immediately. */
+function HotkeyField() {
+  const [info, setInfo] = useState<HotkeyInfo | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [preview, setPreview] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const recordingRef = useRef(false);
+  const boxRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
-    api
-      .hotkeyStatus()
-      .then(setWarning)
-      .catch(() => undefined);
+    api.getHotkey().then(setInfo).catch(() => undefined);
+    // If Settings closes mid-recording, put the current hotkey back.
+    return () => {
+      if (recordingRef.current) void api.pauseHotkey(false);
+    };
   }, []);
-  if (!warning) return null;
+
+  const start = async () => {
+    setError(null);
+    setPreview("");
+    recordingRef.current = true;
+    setRecording(true);
+    setInfo(await api.pauseHotkey(true));
+    boxRef.current?.focus();
+  };
+
+  const stop = async () => {
+    recordingRef.current = false;
+    setRecording(false);
+    setPreview("");
+    setInfo(await api.pauseHotkey(false));
+  };
+
+  const onKeyDown = async (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const mods = modifiersOf(e);
+    if (e.key === "Escape" && mods.length === 0) return void stop();
+    const key = keyName(e.code);
+    if (!key) {
+      // Only modifiers so far (or an unsupported key): show progress.
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) setPreview(mods.join("+") + "+…");
+      else setError("Use a letter, digit, F1–F24 or Space, with Ctrl, Alt or Win.");
+      return;
+    }
+    if (!mods.some((m) => m !== "Shift")) {
+      setPreview("");
+      setError("Include Ctrl, Alt or Win so normal typing isn't captured.");
+      return;
+    }
+    const combo = [...mods, key].join("+");
+    recordingRef.current = false;
+    setRecording(false);
+    setPreview("");
+    const result = await api.trySetHotkey(combo);
+    if (result.ok) {
+      setInfo(result.info);
+      setError(null);
+    } else {
+      setError(result.error);
+      setInfo(await api.getHotkey());
+    }
+  };
+
   return (
-    <p
-      data-hotkey-warning
-      className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
-    >
-      ⚠ {warning}
-    </p>
+    <div className="mt-4 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span>
+          Mini view hotkey
+          <span className="block text-xs text-zinc-500 dark:text-zinc-400">Shows or hides the mini view from any app.</span>
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            ref={boxRef}
+            type="button"
+            data-hotkey-field
+            aria-label="Mini view hotkey"
+            onClick={() => void (recording ? stop() : start())}
+            onKeyDown={(e) => void onKeyDown(e)}
+            onBlur={() => recording && void stop()}
+            className={`min-w-28 rounded-md border px-2.5 py-1 text-center font-mono text-xs ${
+              recording
+                ? "border-sky-500 bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200"
+                : "border-black/15 bg-white dark:border-white/15 dark:bg-zinc-800"
+            }`}
+          >
+            {recording ? preview || "Press keys…" : (info?.combo ?? "…")}
+          </button>
+          {!recording && (
+            <button
+              type="button"
+              data-hotkey-change
+              onClick={() => void start()}
+              className="rounded px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950"
+            >
+              Change
+            </button>
+          )}
+        </div>
+      </div>
+      {recording && (
+        <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">Press the new combo, or Esc to cancel.</p>
+      )}
+      {error && (
+        <p data-hotkey-error className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/60 dark:text-red-300">
+          {error}
+        </p>
+      )}
+      {info?.error && (
+        <p
+          data-hotkey-warning
+          className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+        >
+          ⚠ {info.error}
+        </p>
+      )}
+    </div>
   );
 }
 

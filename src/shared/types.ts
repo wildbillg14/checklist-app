@@ -65,6 +65,14 @@ export interface Settings {
   widgetOpacity: number;
   widgetPinned: boolean;
   widgetCollapsed: boolean;
+  /** Global shortcut that toggles the mini view, e.g. "Ctrl+Alt+L". */
+  toggleHotkey: string;
+}
+
+export interface HotkeyInfo {
+  combo: string;
+  /** Set when another program already owns the combo. */
+  error: string | null;
 }
 
 export type SettingKey = keyof Settings;
@@ -79,4 +87,5 @@ export const DEFAULT_SETTINGS: Settings = {
   widgetOpacity: 90,
   widgetPinned: false,
   widgetCollapsed: false,
+  toggleHotkey: "Ctrl+Alt+L",
 };

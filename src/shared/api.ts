@@ -6,6 +6,7 @@ import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { ReportedError, toastError } from "./toast";
 import type {
   HeadsUpMinutes,
+  HotkeyInfo,
   Item,
   ItemWithContext,
   List,
@@ -71,9 +72,19 @@ export const quickAdd = (title: string, dueAt: number | null) => call<Item>("qui
 // Windows / modes (implemented in Rust so the tray and hotkey stay in sync)
 export const toggleMode = () => call<Mode>("toggle_mode");
 export const setPinned = (pinned: boolean) => call<void>("set_pinned", { pinned });
-/** A warning message if Ctrl+Shift+L couldn't be registered (another program owns it), else null. */
-export const hotkeyStatus = () => call<string | null>("hotkey_status");
 export const setWidgetCollapsed = (collapsed: boolean) => call<void>("set_widget_collapsed", { collapsed });
+
+// Mini view hotkey
+export const getHotkey = () => call<HotkeyInfo>("get_hotkey");
+export const pauseHotkey = (paused: boolean) => call<HotkeyInfo>("pause_hotkey", { paused });
+/** Like the others, but returns the error instead of toasting (Settings shows it inline). */
+export async function trySetHotkey(combo: string): Promise<{ ok: true; info: HotkeyInfo } | { ok: false; error: string }> {
+  try {
+    return { ok: true, info: await invoke<HotkeyInfo>("set_hotkey", { combo }) };
+  } catch (e) {
+    return { ok: false, error: typeof e === "string" ? e : String(e) };
+  }
+}
 
 // Background image: copies the picked file into {app_data_dir}/backgrounds and returns the new path.
 export const importBackground = (source: string) => call<string>("import_background", { source });

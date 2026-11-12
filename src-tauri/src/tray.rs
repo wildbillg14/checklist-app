@@ -15,7 +15,7 @@ pub struct TrayItems {
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
-    let mini = CheckMenuItem::with_id(app, "mini", "Mini view", true, false, Some("Ctrl+Shift+L"))?;
+    let mini = CheckMenuItem::with_id(app, "mini", "Mini view", true, false, None::<&str>)?;
     let quick = MenuItem::with_id(app, "quick", "Quick add", true, None::<&str>)?;
     let pin = CheckMenuItem::with_id(app, "pin", "Pin on top", true, false, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -78,6 +78,12 @@ pub fn sync(app: &AppHandle) {
     if let Some(items) = app.try_state::<TrayItems>() {
         let _ = items.mini.set_checked(windows::current_mode(app) == Mode::Widget);
         let _ = items.pin.set_checked(windows::setting_bool(app, "widgetPinned"));
+        // Show the active toggle hotkey next to "Mini view" (none if it's in conflict).
+        let combo = app
+            .try_state::<crate::hotkey::HotkeyState>()
+            .and_then(|h| h.combo())
+            .map(|c| c.replace("Win+", "Super+"));
+        let _ = items.mini.set_accelerator(combo.as_deref());
     }
 }
 
