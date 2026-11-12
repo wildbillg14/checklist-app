@@ -48,7 +48,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "nsis"],
+    "publisher": "wildbillg14",
+    "category": "Productivity",
+    "shortDescription": "Personal checklist with reminders and a mini view",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
