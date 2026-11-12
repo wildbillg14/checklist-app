@@ -213,7 +213,8 @@ function ListRow({ list }: { list: List }) {
     <div
       data-list-id={list.id}
       onClick={() => setView({ kind: "list", listId: list.id })}
-      onDoubleClick={() => !list.isInbox && setEditing(true)}
+      onDoubleClick={() => setEditing(true)}
+      title={list.isInbox ? "Quick add from the mini view goes here" : undefined}
       className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
         active ? "bg-black/10 font-medium dark:bg-white/15" : "hover:bg-black/5 dark:hover:bg-white/10"
       }`}
@@ -235,7 +236,7 @@ function ListRow({ list }: { list: List }) {
       ) : (
         <span className="flex-1 truncate">{list.name}</span>
       )}
-      {!list.isInbox && !editing && (
+      {!editing && (
         <span className="hidden gap-0.5 group-hover:flex">
           {list.isTemplate && (
             <IconButton
@@ -249,7 +250,8 @@ function ListRow({ list }: { list: List }) {
             </IconButton>
           )}
           <IconButton title="Rename" onClick={(e) => { e.stopPropagation(); setEditing(true); }}>✎</IconButton>
-          <IconButton title="Delete" onClick={remove}>✕</IconButton>
+          {/* The Inbox can be renamed but never deleted. */}
+          {!list.isInbox && <IconButton title="Delete" onClick={remove}>✕</IconButton>}
         </span>
       )}
     </div>

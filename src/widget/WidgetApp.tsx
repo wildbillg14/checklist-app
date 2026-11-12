@@ -15,13 +15,18 @@ export default function WidgetApp() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [today, setToday] = useState<TodayView>({ overdue: [], today: [] });
   const [focusTick, setFocusTick] = useState(0);
+  const [inboxName, setInboxName] = useState("Inbox");
   const dark = useTheme(settings.theme);
 
   const loadSettings = useCallback(async () => {
     const stored = await api.getSettings();
     setSettings({ ...DEFAULT_SETTINGS, ...stored });
   }, []);
-  const loadToday = useCallback(async () => setToday(await api.getToday()), []);
+  const loadToday = useCallback(async () => {
+    const [view, lists] = await Promise.all([api.getToday(), api.getLists()]);
+    setToday(view);
+    setInboxName(lists.find((l) => l.isInbox)?.name ?? "Inbox");
+  }, []);
 
   useEffect(() => {
     void loadSettings();
@@ -79,7 +84,7 @@ export default function WidgetApp() {
         {!collapsed && (
           <>
             <TodayList today={today} />
-            <QuickAdd focusTick={focusTick} />
+            <QuickAdd focusTick={focusTick} inboxName={inboxName} />
           </>
         )}
       </div>

@@ -90,8 +90,8 @@ export default function ListView() {
         ) : (
           <h1
             className="truncate text-2xl font-semibold tracking-tight"
-            onDoubleClick={() => !list.isInbox && setRenaming(true)}
-            title={list.isInbox ? undefined : "Double-click to rename"}
+            onDoubleClick={() => setRenaming(true)}
+            title="Double-click to rename"
           >
             {list.name}
           </h1>

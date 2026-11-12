@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import * as api from "../shared/api";
 import { todayAt } from "../shared/dates";
 
-/** Name + optional time today. New tasks always go to the Inbox. */
-export default function QuickAdd({ focusTick }: { focusTick: number }) {
+/** Name + optional time today. New tasks always go to the Inbox (whatever it's named). */
+export default function QuickAdd({ focusTick, inboxName }: { focusTick: number; inboxName: string }) {
   const [title, setTitle] = useState("");
   const [time, setTime] = useState("");
   const ref = useRef<HTMLInputElement>(null);
@@ -35,7 +35,7 @@ export default function QuickAdd({ focusTick }: { focusTick: number }) {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && (setTitle(""), setTime(""))}
-        placeholder="Quick add to Inbox…"
+        placeholder={`Quick add to ${inboxName}…`}
         aria-label="Quick add task"
         className="min-w-0 flex-1 rounded-md border border-black/10 bg-white/80 px-2 py-1 text-sm outline-none placeholder:text-zinc-400 focus:border-sky-400 dark:border-white/10 dark:bg-zinc-800/80"
       />

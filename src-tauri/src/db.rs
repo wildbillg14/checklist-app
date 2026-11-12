@@ -264,11 +264,10 @@ pub fn create_list(conn: &Connection, name: &str, is_template: bool) -> Result<L
     get_list(conn, conn.last_insert_rowid())
 }
 
+/// Any list can be renamed, the Inbox included: it is identified by `is_inbox`,
+/// not by its name, so quick add keeps working whatever it is called.
 pub fn rename_list(conn: &Connection, id: i64, name: &str) -> Result<(), String> {
-    let list = get_list(conn, id)?;
-    if list.is_inbox {
-        return Err("The Inbox can't be renamed".into());
-    }
+    get_list(conn, id)?;
     let name = clean_name(name, "List name")?;
     conn.execute("UPDATE lists SET name = ?1 WHERE id = ?2", params![name, id])
         .db()?;
@@ -684,11 +683,20 @@ pub mod tests {
     }
 
     #[test]
-    fn inbox_is_protected() {
+    fn inbox_can_be_renamed_but_not_deleted() {
         let conn = mem();
         let inbox = inbox_id(&conn).unwrap();
-        assert!(rename_list(&conn, inbox, "X").is_err());
+        create_list(&conn, "Other", false).unwrap();
+        rename_list(&conn, inbox, "  Capture  ").unwrap();
+        let renamed = get_list(&conn, inbox).unwrap();
+        assert_eq!(renamed.name, "Capture");
+        assert!(renamed.is_inbox);
+        // Still the quick-add destination and still pinned first.
+        assert_eq!(inbox_id(&conn).unwrap(), inbox);
+        assert_eq!(get_lists(&conn).unwrap()[0].id, inbox);
+        assert!(rename_list(&conn, inbox, "   ").is_err());
         assert!(delete_list(&conn, inbox).is_err());
+        assert!(save_list_as_template(&conn, inbox, "x").is_err());
     }
 
     #[test]
